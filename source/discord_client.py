@@ -3,10 +3,12 @@ from os import getenv
 
 import csv
 import discord
+import re
 import threading
 import time
 
 API_TOKEN_ENV_VAR = "DISCORD_API_TOKEN"
+WORDLE_SCORE_MESSAGE_REGEX = 'Wordle \d+? (\d|X)/\d'
 
 class DiscordClient(discord.Client):
     def __init__(self, program_args, message_limit, *args, **kwargs):
@@ -23,7 +25,11 @@ class DiscordClient(discord.Client):
             csv_writer = csv.writer(csvfile, delimiter=',')
             csv_writer.writerow(['user_id','message','created_timestamp','last_edited_timestamp'])
             async for message in txt_channel.history(limit=self.message_limit):
-                if message.clean_content:
+                if (
+                        message.clean_content and
+                        re.match(WORDLE_SCORE_MESSAGE_REGEX, message.clean_content) and
+                        is_valid_wordle_result(message.clean_content)
+                    ):
                     csv_writer.writerow([format_author(message.author.name), message.clean_content, message.created_at, message.edited_at])
 
     async def fetch_server_messages(self):
@@ -65,3 +71,12 @@ def format_author(author_name):
     Removes 4 digit user identifier
     """
     return author_name.split('#')[0]
+
+def is_valid_wordle_result(message):
+    """
+    Determines if given message is a valid wordle result.
+    Possible scores are out of 6, or X for a loss (did not finish in 6 tries)
+    """
+    ratio = message.split(" ")[2] # e.g "1/6"
+    score = ratio.split("/")[0] # e.g "1"
+    return score == 'X' or int(score) <= 6
